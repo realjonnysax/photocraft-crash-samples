@@ -1,11 +1,19 @@
 # PhotoCraft crash samples
 
-Large CLEM stitch documents that freeze [PhotoCraft](https://github.com/storytold/photocraft)'s canvas
-when a layer's blend mode or opacity is changed — the visible image stops refreshing for a long time,
-while zoom/pan keep working.
+Large CLEM stitch documents that expose two canvas problems in
+[PhotoCraft](https://github.com/storytold/photocraft) on huge layers. Context and
+source-level analysis: [storytold/photocraft#1015](https://github.com/storytold/photocraft/issues/1015)
 
-Context and source-level analysis:
-[storytold/photocraft#1015](https://github.com/storytold/photocraft/issues/1015)
+**Layer blending and opacity only "freeze" when Free Transform is stuck active.** A lingering
+transform session (its handles can sit off-screen, invisible on a huge canvas) blocks property
+edits with *"Commit or cancel the transform first"* — so the sliders look dead. Press Enter to
+commit (on these layers that itself is delayed — a multi-second CPU resample of the whole overlay),
+and blend/opacity edits work again. Standard Photoshop adjusts blend/opacity mid-transform with
+live preview; PhotoCraft blocks the edit until the transform is committed.
+
+Separately, on our larger documents blend/opacity edits themselves take the full-refresh path and
+fall back to a synchronous CPU composite when the GPU working set doesn't fit the memory budget —
+the visible image stops refreshing for a long time (tracked in #1015).
 
 ## Samples
 
@@ -29,9 +37,12 @@ patch (padded FFT + multi-scale pair registration), 20% overlap, U-Net denoised 
 ## Repro
 
 1. Open a sample in PhotoCraft (v0.3.0, Windows; tested on 127.9 GB RAM, RTX 2070 8 GB, i7-6950X)
-2. Change the overlay layer's blend mode or opacity
-3. The canvas stops refreshing for a long time — the edit takes the full-refresh path, which falls
-   back to the synchronous CPU compositor when the GPU working set doesn't fit the memory budget
+2. Run Free Transform on the overlay layer — the handles can sit off-screen and stay invisible
+3. Try to change blend/opacity — refused: the sliders look dead, "Commit or cancel the transform first"
+4. Press Enter to commit — several seconds of silent blocking while the whole layer is resampled on the CPU
+5. Blend/opacity edits then work on these 8-bit two-layer documents (GPU path holds); on our larger
+   documents (up to 29119 px tall, a 6.4 GB PSB) the edit itself takes the CPU full-refresh path and
+   the canvas stops refreshing for a long time
 
 The overlay layers extending past the canvas (up to 46840 × 33916 bounds on a 20206 × 13292 canvas)
 enlarge the surfaces the compositor has to keep resident.
